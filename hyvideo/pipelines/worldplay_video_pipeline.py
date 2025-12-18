@@ -924,19 +924,21 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
             self._kv_cache.append({'k_vision': None, 'v_vision': None, 'k_txt': None, 'v_txt': None})
             self._kv_cache_neg.append({'k_vision': None, 'v_vision': None, 'k_txt': None, 'v_txt': None})
 
-    def ar_rollout(self,
-                   latents,
-                   timesteps,
-                   prompt_embeds,
-                   prompt_mask,
-                   vision_states,
-                   cond_latents,
-                   task_type,
-                   extra_kwargs,
-                   viewmats,
-                   Ks,
-                   action,
-                   device,):
+    def ar_rollout(
+        self,
+        latents,
+        timesteps,
+        prompt_embeds,
+        prompt_mask,
+        vision_states,
+        cond_latents,
+        task_type,
+        extra_kwargs,
+        viewmats,
+        Ks,
+        action,
+        device,
+    ):
         self.init_kv_cache()
         positive_idx = 1 if self.do_classifier_free_guidance else 0
         stabilization_level = 15
@@ -948,7 +950,7 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
                 "byt5_text_mask": extra_kwargs["byt5_text_mask"][positive_idx, None, ...],
             }
             t_expand_txt = torch.tensor([0]).to(device).to(latents.dtype)
-            self.transformer(
+            self._kv_cache = self.transformer(
                 bi_inference=False,
                 ar_txt_inference=True,
                 ar_vision_inference=False,
@@ -967,7 +969,7 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
                     "byt5_text_mask": extra_kwargs["byt5_text_mask"][0, None, ...],
                 }
                 t_expand_txt = torch.tensor([0]).to(device).to(latents.dtype)
-                self.transformer(
+                self._kv_cache_neg = self.transformer(
                     bi_inference=False,
                     ar_txt_inference=True,
                     ar_vision_inference=False,
@@ -1015,7 +1017,7 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
                 # compute kv cache
                 with (torch.autocast(device_type="cuda", dtype=self.target_dtype, enabled=self.autocast_enabled),
                       auto_offload_model(self.transformer, self.execution_device,enabled=self.enable_offloading)):
-                    self.transformer(
+                    self._kv_cache = self.transformer(
                         bi_inference=False,
                         ar_txt_inference=False,
                         ar_vision_inference=True,
@@ -1033,7 +1035,7 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
                         start_rope_start_idx=0,
                     )
                     if self.do_classifier_free_guidance:
-                        self.transformer(
+                        self._kv_cache_neg = self.transformer(
                             bi_inference=False,
                             ar_txt_inference=False,
                             ar_vision_inference=True,
@@ -1120,19 +1122,21 @@ class HunyuanVideo_1_5_Pipeline(DiffusionPipeline):
                             progress_bar.update()
         return latents
 
-    def bi_rollout(self,
-                   latents,
-                   timesteps,
-                   prompt_embeds,
-                   prompt_mask,
-                   vision_states,
-                   cond_latents,
-                   task_type,
-                   extra_kwargs,
-                   viewmats,
-                   Ks,
-                   action,
-                   device,):
+    def bi_rollout(
+        self,
+        latents,
+        timesteps,
+        prompt_embeds,
+        prompt_mask,
+        vision_states,
+        cond_latents,
+        task_type,
+        extra_kwargs,
+        viewmats,
+        Ks,
+        action,
+        device,
+    ):
         stabilization_level = 15
         for chunk_i in range(self.chunk_num):
             if chunk_i > 0:

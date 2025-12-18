@@ -138,7 +138,6 @@ def sequence_parallel_attention_txt(q, k, v,
         sp_rank = parallel_dims.sp_rank
 
     if enable_sp:
-
         def shrink_head(encoder_state, dim):
             local_heads = encoder_state.shape[dim] // sp_size
             return encoder_state.narrow(
@@ -152,9 +151,10 @@ def sequence_parallel_attention_txt(q, k, v,
     encoder_query = encoder_query.transpose(1, 2)
     encoder_key = encoder_key.transpose(1, 2)
     encoder_value = encoder_value.transpose(1, 2)
+    t_kv = {}
     if cache_txt:
-        kv_cache[block_idx]['k_txt'] = encoder_key
-        kv_cache[block_idx]['v_txt'] = encoder_value
+        t_kv['k_txt'] = encoder_key
+        t_kv['v_txt'] = encoder_value
 
     encoder_hidden_states = F.scaled_dot_product_attention(
                                                         encoder_query, 
@@ -174,7 +174,7 @@ def sequence_parallel_attention_txt(q, k, v,
     b, s, a, d = encoder_hidden_states.shape
     encoder_hidden_states = encoder_hidden_states.reshape(b, s, -1)
 
-    return encoder_hidden_states
+    return encoder_hidden_states, t_kv
 
 @torch.compiler.disable
 def sequence_parallel_attention_vision(q, k, v,
@@ -210,9 +210,10 @@ def sequence_parallel_attention_vision(q, k, v,
     cache_vision_key = kv_cache[block_idx]['k_vision'] # previous key
     cache_vision_value = kv_cache[block_idx]['v_vision'] # previous value
 
+    vision_kv = {}
     if cache_vision:
-        kv_cache[block_idx]['k_vision'] = key
-        kv_cache[block_idx]['v_vision'] = value
+        vision_kv['k_vision'] = key
+        vision_kv['v_vision'] = value
 
     if not cache_vision and cache_vision_key is not None:
         key = torch.cat([cache_vision_key, key], dim=2)
@@ -239,7 +240,7 @@ def sequence_parallel_attention_vision(q, k, v,
     hidden_states = hidden_states.reshape(b, s, -1)
     hidden_states, hidden_states_prope = torch.chunk(hidden_states, chunks=2, dim=0)
 
-    return hidden_states, hidden_states_prope
+    return hidden_states, hidden_states_prope, vision_kv
 
 @torch.compiler.disable
 def parallel_attention(q, k, v, img_q_len, img_kv_len, 

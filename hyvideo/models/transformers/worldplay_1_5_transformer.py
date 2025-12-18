@@ -197,7 +197,7 @@ class MMDoubleStreamBlock(nn.Module):
          txt_mod2_shift, txt_mod2_scale, txt_mod2_gate) = self.modulate_txt(vec_txt, txt)
 
         attn_mode = 'torch_causal'  # for ar model, the default mode is torch_causal
-        txt_attn = sequence_parallel_attention_txt(
+        txt_attn, t_kv = sequence_parallel_attention_txt(
             (txt_q),
             (txt_k),
             (txt_v),
@@ -216,7 +216,7 @@ class MMDoubleStreamBlock(nn.Module):
             self.txt_mlp(modulate(self.txt_norm2(txt), shift=txt_mod2_shift, scale=txt_mod2_scale)),
             gate=txt_mod2_gate,
         )
-        return txt
+        return txt, t_kv
 
     @torch_compile_wrapper()
     def forward_vision(
@@ -253,7 +253,7 @@ class MMDoubleStreamBlock(nn.Module):
             ), f"img_kk: {img_qq.shape}, img_q: {img_q.shape}, img_kk: {img_kk.shape}, img_k: {img_k.shape}"
             img_q, img_k = img_qq, img_kk
 
-        img_attn, img_attn_prope = sequence_parallel_attention_vision(
+        img_attn, img_attn_prope, vision_kv = sequence_parallel_attention_vision(
             (img_q, img_q_prope),
             (img_k, img_k_prope),
             (img_v, img_v_prope),
@@ -275,7 +275,7 @@ class MMDoubleStreamBlock(nn.Module):
             gate=img_mod2_gate,
         )
 
-        return img
+        return img, vision_kv
 
     @torch_compile_wrapper()
     def forward_bi(
@@ -1028,6 +1028,12 @@ class HunyuanVideo_1_5_DiffusionTransformer(ModelMixin, ConfigMixin):
         kv_cache: Optional[dict] = None,
         cache_txt: Optional[bool] = False,
     ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
+        if cache_txt:
+            _kv_cache_new = []
+            transformer_num_layers = len(self.double_blocks)
+            for _ in range(transformer_num_layers):
+                _kv_cache_new.append({'k_vision': None, 'v_vision': None, 'k_txt': None, 'v_txt': None})
+
         txt, text_mask, vec_txt = self.get_text_and_mask(
             encoder_attention_mask,
             text_states,
@@ -1042,7 +1048,7 @@ class HunyuanVideo_1_5_DiffusionTransformer(ModelMixin, ConfigMixin):
 
         # Pass through double-stream blocks
         for index, block in enumerate(self.double_blocks):
-            txt = block(
+            txt, t_kv = block(
                 bi_inference=False,
                 ar_txt_inference=True,
                 ar_vision_inference=False,
@@ -1055,6 +1061,13 @@ class HunyuanVideo_1_5_DiffusionTransformer(ModelMixin, ConfigMixin):
                 kv_cache=kv_cache,
                 cache_txt=cache_txt,
             )
+
+            if cache_txt:
+                _kv_cache_new[index]['k_txt'] = t_kv['k_txt']
+                _kv_cache_new[index]['v_txt'] = t_kv['v_txt']
+
+        if cache_txt:
+            return _kv_cache_new
 
     # using kv cache to calculate vision embedding
     def forward_vision(
@@ -1075,6 +1088,12 @@ class HunyuanVideo_1_5_DiffusionTransformer(ModelMixin, ConfigMixin):
         rope_temporal_size=4,
         start_rope_start_idx=0,
     ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
+        if cache_vision:
+            _kv_cache_new = []
+            transformer_num_layers = len(self.double_blocks)
+            for i in range(transformer_num_layers):
+                _kv_cache_new.append({'k_vision': None, 'v_vision': None,
+                                      'k_txt': kv_cache[i]['k_txt'], 'v_txt': kv_cache[i]['v_txt']})
 
         img = x = hidden_states
         t = timestep
@@ -1135,7 +1154,7 @@ class HunyuanVideo_1_5_DiffusionTransformer(ModelMixin, ConfigMixin):
         for index, block in enumerate(self.double_blocks):
             self.attn_param["layer-name"] = f"double_block_{index + 1}"
 
-            img = block(
+            img, vision_kv = block(
                 bi_inference=False,
                 ar_txt_inference=False,
                 ar_vision_inference=True,
@@ -1149,6 +1168,12 @@ class HunyuanVideo_1_5_DiffusionTransformer(ModelMixin, ConfigMixin):
                 kv_cache=kv_cache,
                 cache_vision=cache_vision,
             )
+            if cache_vision:
+                _kv_cache_new[index]['k_vision'] = vision_kv['k_vision']
+                _kv_cache_new[index]['v_vision'] = vision_kv['v_vision']
+
+        if cache_vision:
+            return _kv_cache_new
 
         # Final Layer
         img = self.final_layer(img, vec)

@@ -202,27 +202,27 @@ def generate_video(args):
         extra_kwargs['reference_image'] = args.image_path
 
     out = pipe(
-            enable_sr=enable_sr,
-            prompt=args.prompt,
-            aspect_ratio=args.aspect_ratio,
-            num_inference_steps=args.num_inference_steps,
-            sr_num_inference_steps=None,
-            video_length=args.video_length,
-            negative_prompt=args.negative_prompt,
-            seed=args.seed,
-            output_type="pt",
-            prompt_rewrite=enable_rewrite,
-            return_pre_sr_video=args.save_pre_sr_video,
-            viewmats=viewmats.unsqueeze(0),
-            Ks=Ks.unsqueeze(0),
-            action=action.unsqueeze(0),
-            few_step=args.few_step,
-            chunk_latent_frames=4 if args.model_type == "ar" else 16,
-            model_type=args.model_type,
-            user_height=args.height,
-            user_width=args.width,
-            **extra_kwargs,
-        )
+        enable_sr=enable_sr,
+        prompt=args.prompt,
+        aspect_ratio=args.aspect_ratio,
+        num_inference_steps=args.num_inference_steps,
+        sr_num_inference_steps=None,
+        video_length=args.video_length,
+        negative_prompt=args.negative_prompt,
+        seed=args.seed,
+        output_type="pt",
+        prompt_rewrite=enable_rewrite,
+        return_pre_sr_video=args.save_pre_sr_video,
+        viewmats=viewmats.unsqueeze(0),
+        Ks=Ks.unsqueeze(0),
+        action=action.unsqueeze(0),
+        few_step=args.few_step,
+        chunk_latent_frames=4 if args.model_type == "ar" else 16,
+        model_type=args.model_type,
+        user_height=args.height,
+        user_width=args.width,
+        **extra_kwargs,
+    )
 
     # save video
     if int(os.environ.get('RANK', '0')) == 0:
