@@ -34,7 +34,7 @@
 ## 🎥 Video
 
 <p align="center">
-  <video src="https://3d-models.hunyuan.tencent.com/world/world1_5/Video/Worldplay1.5_en.mp4" controls width="100%"></video>
+  <video src="https://github.com/user-attachments/assets/9fd12b40-41ab-4201-8667-8b333db1123d" controls width="100%"></video>
 </p>
 
 ## 🔥 News

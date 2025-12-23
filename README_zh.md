@@ -30,7 +30,7 @@
 ## 🎥 宣传视频
 
 <p align="center">
-  <video src="https://3d-models.hunyuan.tencent.com/world/world1_5/Video/Worldplay1.5_zh.mp4" controls width="100%"></video>
+  <video src="https://github.com/user-attachments/assets/19a8ef47-3d1a-4c29-a80f-500b342bfc80" controls width="100%"></video>
 </p>
 
 ## 🔥 新闻
