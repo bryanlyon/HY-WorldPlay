@@ -94,53 +94,52 @@ def select_mem_frames_wan(
         range(0, current_frame_idx - temporal_context_size, 4)
     )
 
-    selected_mem_indices = []
-    required_mem_frames = memory_frames - temporal_context_size
+    memory_frames_indices = []  # add the first latent frame as context
+    memory_frames = memory_frames - temporal_context_size
 
-    # Calculate similarity scores for historical clips
-    clip_scores = []
-    for clip_start in historical_clip_indices:
-        accumulated_similarity = 0.0
-        ref_w2c_frame1, ref_w2c_frame3 = w2c_list[clip_start], w2c_list[clip_start + 2]
-
-        for target_idx in query_clip_indices:
-            overlap_1 = calculate_fov_overlap_similarity(
-                w2c_list[target_idx],
-                ref_w2c_frame1,
+    for hist_idx in historical_clip_indices:
+        total_dist = 0
+        hist_w2c_1 = w2c_list[hist_idx]
+        hist_w2c_2 = w2c_list[hist_idx + 2]
+        for query_idx in query_clip_indices:
+            dist_1_for_query_idx = 1.0 - calculate_fov_overlap_similarity(
+                w2c_list[query_idx],
+                hist_w2c_1,
                 fov_h_deg=60.0,
                 fov_v_deg=35.0,
                 device=device,
                 points_local=points_local,
             )
-            overlap_2 = calculate_fov_overlap_similarity(
-                w2c_list[target_idx],
-                ref_w2c_frame3,
+            dist_2_for_query_idx = 1.0 - calculate_fov_overlap_similarity(
+                w2c_list[query_idx],
+                hist_w2c_2,
                 fov_h_deg=60.0,
                 fov_v_deg=35.0,
                 device=device,
                 points_local=points_local,
             )
-            avg_overlap = (overlap_1 + overlap_2) * 0.5
-            accumulated_similarity += 1.0 - avg_overlap
+            dist_for_query_idx = (dist_1_for_query_idx + dist_2_for_query_idx) / 2.0
+            total_dist += dist_for_query_idx
 
-        mean_dissimilarity = accumulated_similarity / len(query_clip_indices)
-        clip_scores.append((clip_start, mean_dissimilarity))
+        final_clip_distance = total_dist / len(query_clip_indices)
+        candidate_distances.append((hist_idx, final_clip_distance))
 
-    # Sort by dissimilarity (ascending order)
-    sorted_clips = sorted(clip_scores, key=lambda item: item[1])
+    candidate_distances.sort(key=lambda x: x[1])
 
-    # Collect frames from top-ranked clips until quota is met
-    for clip_idx, _ in sorted_clips:
-        if len(selected_mem_indices) >= required_mem_frames:
+    # 遍历排序后的候选片段，直到收集到足够的记忆帧
+    for start_idx, _ in candidate_distances:
+        if start_idx not in memory_frames_indices:
+            memory_frames_indices.extend(range(start_idx, start_idx + 4))
+
+        # 检查是否已达到 memory_size 的要求
+        if len(memory_frames_indices) >= memory_frames:
             break
 
-        if clip_idx not in selected_mem_indices:
-            selected_mem_indices.extend(range(clip_idx, clip_idx + 4))
+    # 4. 组合并去重，以确保没有重复的帧
+    selected_frames_set = set(context_frames_indices)
+    selected_frames_set.update(memory_frames_indices)
 
-    # 4. Merge and deduplicate frames
-    all_frame_indices = set(context_frames_indices) | set(selected_mem_indices)
-    final_selected_frames = sorted(all_frame_indices)
-
+    final_selected_frames = sorted(list(selected_frames_set))
     assert len(final_selected_frames) == memory_frames + temporal_context_size
     return final_selected_frames
 
