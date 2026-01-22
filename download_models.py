@@ -16,6 +16,42 @@ import shutil
 import sys
 
 
+def move_or_link(src_path, dst_path, workspace_path="/workspace"):
+    """
+    Move file to destination if it's outside workspace, otherwise create symlink.
+    If src is NOT in /workspace: move it directly to dst (final location)
+    If src IS in /workspace: create symlink from dst to src
+    """
+    real_src = os.path.realpath(src_path)
+    
+    # Check if the real path is within workspace
+    in_workspace = False
+    try:
+        real_src_rel = os.path.relpath(real_src, workspace_path)
+        if not real_src_rel.startswith(".."):
+            in_workspace = True
+    except ValueError:
+        # Paths are on different drives or can't be relativized
+        pass
+    
+    # Clean up destination if it exists
+    if os.path.exists(dst_path):
+        if os.path.islink(dst_path):
+            os.unlink(dst_path)
+        elif os.path.isdir(dst_path):
+            shutil.rmtree(dst_path)
+        else:
+            os.remove(dst_path)
+    
+    if in_workspace:
+        # Already in workspace, create symlink
+        os.symlink(real_src, dst_path)
+    else:
+        # Not in workspace, move to final location
+        os.makedirs(os.path.dirname(dst_path), exist_ok=True)
+        shutil.move(real_src, dst_path)
+
+
 def check_dependencies():
     """Check and install required dependencies."""
     try:
@@ -39,7 +75,7 @@ def download_hy_worldplay():
     print("[1/6] Downloading tencent/HY-WorldPlay...")
     print("=" * 60)
 
-    worldplay_path = snapshot_download("tencent/HY-WorldPlay")
+    worldplay_path = snapshot_download("tencent/HY-WorldPlay", revision="969249711ab41203e8d8d9f784a82372e9070ac5")
     print(f"Downloaded to: {worldplay_path}")
 
     # Fix: Rename model.safetensors to diffusion_pytorch_model.safetensors
@@ -49,10 +85,9 @@ def download_hy_worldplay():
     model_dst = os.path.join(ar_distill_dir, "diffusion_pytorch_model.safetensors")
 
     if os.path.exists(model_src) and not os.path.exists(model_dst):
-        real_src = os.path.realpath(model_src)
-        shutil.copy2(real_src, model_dst)
+        move_or_link(model_src, model_dst)
         print(
-            "Fixed: Renamed model.safetensors -> diffusion_pytorch_model.safetensors in ar_distilled_action_model"
+            "Fixed: Processed model.safetensors -> diffusion_pytorch_model.safetensors in ar_distilled_action_model"
         )
 
     return worldplay_path
@@ -104,17 +139,14 @@ def download_llm_text_encoder(hunyuan_path):
     print("Downloading Qwen/Qwen2.5-VL-7B-Instruct (~15GB)...")
     qwen_cache = snapshot_download("Qwen/Qwen2.5-VL-7B-Instruct")
 
-    # Copy files (resolve symlinks)
+    # Move or link files based on whether they're in workspace
     os.makedirs(llm_target, exist_ok=True)
     for item in os.listdir(qwen_cache):
-        src = os.path.realpath(os.path.join(qwen_cache, item))
+        src = os.path.join(qwen_cache, item)
         dst = os.path.join(llm_target, item)
-        if os.path.isdir(src):
-            shutil.copytree(src, dst, dirs_exist_ok=True)
-        else:
-            shutil.copy2(src, dst)
+        move_or_link(src, dst)
 
-    print(f"Copied to: {llm_target}")
+    print(f"Processed: {llm_target}")
 
 
 def download_byt5_encoders(hunyuan_path):
@@ -148,13 +180,10 @@ def download_byt5_encoders(hunyuan_path):
 
         os.makedirs(byt5_target, exist_ok=True)
         for item in os.listdir(byt5_cache):
-            src = os.path.realpath(os.path.join(byt5_cache, item))
+            src = os.path.join(byt5_cache, item)
             dst = os.path.join(byt5_target, item)
-            if os.path.isdir(src):
-                shutil.copytree(src, dst, dirs_exist_ok=True)
-            else:
-                shutil.copy2(src, dst)
-        print(f"Copied to: {byt5_target}")
+            move_or_link(src, dst)
+        print(f"Processed: {byt5_target}")
 
     # 2. Download Glyph-SDXL-v2 from ModelScope
     glyph_target = os.path.join(text_encoder_base, "Glyph-SDXL-v2")
@@ -175,13 +204,8 @@ def download_byt5_encoders(hunyuan_path):
         for item in os.listdir(glyph_cache):
             src = os.path.join(glyph_cache, item)
             dst = os.path.join(glyph_target, item)
-            if os.path.isdir(src):
-                if os.path.exists(dst):
-                    shutil.rmtree(dst)
-                shutil.copytree(src, dst)
-            else:
-                shutil.copy2(src, dst)
-        print(f"Copied to: {glyph_target}")
+            move_or_link(src, dst)
+        print(f"Processed: {glyph_target}")
 
 
 def download_vision_encoder(hunyuan_path, hf_token):
@@ -226,16 +250,13 @@ def download_vision_encoder(hunyuan_path, hf_token):
             "black-forest-labs/FLUX.1-Redux-dev", token=hf_token
         )
 
-        # Copy files (resolve symlinks)
+        # Move or link files based on whether they're in workspace
         os.makedirs(siglip_target, exist_ok=True)
         for item in os.listdir(flux_cache):
-            src = os.path.realpath(os.path.join(flux_cache, item))
+            src = os.path.join(flux_cache, item)
             dst = os.path.join(siglip_target, item)
-            if os.path.isdir(src):
-                shutil.copytree(src, dst, dirs_exist_ok=True)
-            else:
-                shutil.copy2(src, dst)
-        print(f"Copied to: {siglip_target}")
+            move_or_link(src, dst)
+        print(f"Processed: {siglip_target}")
     except Exception as e:
         print(f"ERROR: Failed to download vision encoder: {e}")
         print(
@@ -252,7 +273,7 @@ def print_paths():
     print("=" * 60)
 
     hunyuan_path = snapshot_download("tencent/HunyuanVideo-1.5", local_files_only=True)
-    worldplay_path = snapshot_download("tencent/HY-WorldPlay", local_files_only=True)
+    worldplay_path = snapshot_download("tencent/HY-WorldPlay", revision="969249711ab41203e8d8d9f784a82372e9070ac5", local_files_only=True)
 
     print("\n" + "=" * 60)
     print("ALL DOWNLOADS COMPLETE!")
